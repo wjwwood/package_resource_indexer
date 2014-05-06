@@ -205,12 +205,8 @@ Additionally, the simple file system based layout should make it relatively easy
 
 Registering that your package installs a resource of a particular type should follow these steps:
 
-- Does the `<prefix>/share` folder exist?
- - No: Create it.
-- Does the `<prefix>/share/package_resources` folder exist?
- - No: Create it.
-- Does the `<prefix>/share/package_resources/<resource_type>` folder exist?
- - No: Create it.
+- Do the `<prefix>/share/package_resources/<resource_type>` folders exist?
+ - No: Create them.
 - Does the `<prefix>/share/package_resources/<resource_type>/<package_name>` file exist?
  - Yes: At best, error registration collision, otherwise overwrite (bad behavior, but it may not be possible to detect)
  - No: Create it, with any content you want (keep it simple)
@@ -220,10 +216,12 @@ This prescription should be relatively easy to follow for any build system.
 It is recommended that the interface provided to the user follow something like this (CMake in this example):
 
 ```cmake
-# register_package(<package_name>)
-register_package(${PROJECT_NAME})
 # register_package_resource(<package_name> <resource_type> [CONTENT <content>])
 register_package_resource(${PROJECT_NAME} "plugin.rviz.display" CONTENT "../../${PROJECT_NAME}/plugin.xml")
+# register_package(<package_name>)
+register_package(${PROJECT_NAME})
+# register_package(...) is functionally equivalent to:
+# register_package_resource(${PROJECT_NAME} "packages")
 ```
 
 ### Querying the Resource Index
@@ -240,7 +238,7 @@ def list_prefix_of_packages_by_resource(resource_type, prefixes):
 ```
 
 This function should take a resource type name as a string and a list of prefixes as strings.
-It should assert that the prefixes exist, but not that they each have a resource index within them.
+It should silently pass if any of the prefixes do not exist, or if any of them do not have a resource index within them.
 It should return a data structure like this:
 
 
@@ -348,9 +346,3 @@ for package_name, prefix in packages.items():
 ```
 
 Again, this is a scenario in which this project does not find the plugin for you, but instead makes it more efficient to find the plugin.
-
-Open Questions
---------------
-
-- Should the `list_packages_providing_resource` function assert that all provided prefixes exist?
-- Should we define the contents of the marker files so that they can index the actual resources of each type?
