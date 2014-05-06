@@ -6,9 +6,9 @@ System for cataloging and referencing resources distributed by software packages
 Conceptual Overview
 -------------------
 
-This project provides two main things, the ability for packages to register resources they install and the ability to make queries about those resources at runtime.
-The queries might be anything from "Which packages are installed?" to "Which packages provide plugins for my project?".
-This project does not aim at cataloging and explicitly referencing all individual resources, but rather providing meta information about what resources are provided by what packages and then providing absolute paths to the package's resource folders.
+This project provides two main things, the ability for packages to register types resources they install and the ability to make queries about those resources at runtime.
+The queries might be anything from "Which packages are installed?" to "Which packages provide plugins of a certain type?".
+This project does not aim to catalog and explicitly reference all individual resources, but rather to provide meta information about what resources are provided by what packages and then providing absolute paths to the prefix containing the package.
 These are the design requirements:
 
 - Prevent recursive crawling
@@ -19,19 +19,19 @@ These are the design requirements:
  - Participation should not require a package to overwrite or modify an existing file when installing
  - This is useful when packaging for Linux package managers
 - Do not try to capture all information
- - Many types of resources already provide mechanism for describing and referencing resources, do not reinvent this
- - For example, if a system has plugins then it likely already has a mechanism for describing the plugins, this project should not try to capture all of that kind of meta information about resources
+ - Many types of resources already provide mechanism for describing and referencing themselves, do not reinvent this
+ - For example, if a system has plugins then it likely already has a mechanism for describing the plugins, this project should not try to capture all of that kind of meta information about individual resources
  - Stick to meta information about what resources are provided not meta information about the installed resources
 - Support overlaying
- - If a package is installed into multiple places on the system and those places are ordered, return information about the first encountered one only
-- Do not depend on externally defined environment variables or resources
- - The `ROS_PACKAGE_PATH` and `CMAKE_PREFIX_PATH` env variables
- - Parsing `package.xml`'s or `plugin.xml`'s.
+ - If a package is installed into multiple prefixes on the system and those prefixes are ordered, return information based on that ordering
+- Do not depend on externally defined environment variables or file formats
+ - The `ROS_PACKAGE_PATH` and `CMAKE_PREFIX_PATH` environment variables
+ - Parsing `package.xml`'s or `plugin.xml`'s
 
-These requirements come from experience with the resource discovery system in (ROS)[https://wiki.ros.org/], where packages were located anywhere recursively under one of several paths in the `ROS_PACKAGE_PATH` environment variable.
-Even in the catkin build system, discovery of installed packages requires crawling, recursively, each `<prefix>/share` directory for packages.
-This can be slow even though the crawling stops when a `package.xml` is discovered.
-In cases like `/usr` the contents of `share` can be broad and folders with no `package.xml` can be deep.
+These requirements come from experience with the resource discovery system in [ROS](https://wiki.ros.org/), where packages were located anywhere recursively under one of several paths in the `ROS_PACKAGE_PATH` environment variable.
+This decision has lead to things like `rospack` caching information, which can get out of date, and then lead to subtle bugs for the users.
+The catkin build system also requires recursive crawling on the `share` directory for each install prefix in order to find packages.
+This can be slow even though the crawling stops when a `package.xml` is discovered, because in cases like `/usr` the contents of `share` can be broad and folders with no `package.xml` can be deep.
 
 Design
 ------
@@ -42,8 +42,7 @@ First, there is no crawling because there is a well known location under each pr
 Second, it can be implemented in a way which does not cause file collisions on installation nor the running or updating of a database at distribution time, which eases the use of this in Linux packaging.
 This design has the added benefit of being easy to make use of at run time using any programming language because it does not require parsing of files.
 
-File System Index Layout
-^^^^^^^^^^^^^^^^^^^^^^^^
+### File System Index Layout
 
 The general concept is that we define a well known location, `<prefix>/share/package_resources`, which is reserved and in which all packages can install files.
 We'll call this the "resource index".
@@ -51,14 +50,16 @@ In this "resource index" is a file system structure which is setup as a set of f
 In each of those "resource type" folders every package which provides a resource of that type can install a file named for the package, called a "marker file".
 
 Lets look at an example.
-The simplest case is that each package (`foo`, `bar`, and `baz`) should register that it is installed, so that would look like this:
+The simplest case is that each package (`foo`, `bar`, and `baz`) should register that it is installed. That would look like this:
 
 ```
-<prefix>/share/package_resources/
--- packages/
-   -- foo
-   -- bar
-   -- baz
+<prefix>
+    `-- share
+        `-- package_resources
+            `-- packages
+                `-- foo
+                `-- bar
+                `-- baz
 ```
 
 So now the operations to answer "Which packages are installed?" is just (Python):
@@ -68,25 +69,27 @@ import os
 return os.listdir(os.path.join(prefix, 'share', 'package_resources', 'packages'))
 ```
 
-This can be catalog other types of resources with varying degrees of precision.
+This can be used to catalog other types of resources with varying degrees of precision.
 There is a trade-off between the number of files installed and the number of ways things are categorized, but run time search is unaffected by the number of categories.
 For example, we could keep track of which packages have plugins for `rviz`'s display system:
 
 ```
-<prefix>/share/package_resources/
--- packages/
-   -- foo
-   -- bar
-   -- baz
--- plugins.rviz_display/
-   -- foo
+<prefix>
+    `-- share
+        `-- package_resources
+            |-- packages
+            |   `-- foo
+            |   `-- bar
+            |   `-- baz
+            |-- plugins.rviz.display
+                `-- foo
 ```
 
 Answering the question "Which packages have plugins for rviz's display system?" is now simply:
 
 ```python
 import os
-return os.listdir(os.path.join(prefix, 'share', 'package_resources', 'plugins.rviz_display'))
+return os.listdir(os.path.join(prefix, 'share', 'package_resources', 'plugins.rviz.display'))
 ```
 
 Currently in ROS, this requires that all packages are discovered first and then each manifest file for each package must be parsed (`package.xml` or `manifest.xml`) and then for each package zero to many `plugin.xml` files must be parsed.
@@ -96,28 +99,32 @@ It also prevents us from parsing additional, unrelated, `plugin.xml` files, so t
 For other resources, the speed up at this point is probably minimal, but other examples might include "Which packages have defined message files?" or "Which packages have launch files?".
 These types of queries can potentially speed up command line tools considerably.
 
-Resource Index
-^^^^^^^^^^^^^^
+### Resource Index
 
-Each prefix which contains any packages contain a resource index folder located at `<prefix>/share/package_resources`.
+Each prefix which contains any packages should contain a resource index folder located at `<prefix>/share/package_resources`.
 In this context a "prefix" is a FHS compliant file system and typically will be listed in an environment variable as a list of paths, e.g. `ROS_PACKAGE_PATH` or `CMAKE_PREFIX_PATH`, and will contain the system and user "install spaces", e.g. `/usr`, `/usr/local`, `/opt/ros/indigo`, `/home/user/workspace/install`, etc...
 
 Any implementation which allows queries should consider multiple prefixes.
-Consider a set of prefixes in this order: `/home/user/workspace/install`, `/opt/ros/indigo`, and `/usr`, and where the package `foo` is installed into `/home/user/workspace/install` and `/usr`.
-Then consider the possible answers to the query "List the location of rviz plugin files." where `foo` provides plugins for `rviz` but no other packages do:
+Consider a set of prefixes in this order: `/home/user/workspace/install`, `/opt/ros/indigo`, and `/usr`.
+Also consider that the package `foo` is installed into `/home/user/workspace/install` and `/usr`.
+Then consider the possible answers to the query "List the location of rviz plugin files." where `foo` provides plugins for `rviz` but no other package does:
 
-- {'foo': ['/home/user/workspace/install/share/foo/plugin.xml', '/usr/share/foo/plugin.xml']}  # This is OK
-- {'foo': ['/usr/share/foo/plugin.xml', '/home/user/workspace/install/share/foo/plugin.xml']}  # This is Bad
-- ['/home/user/workspace/share/foo/plugin.xml']  # This is also OK
-- ['/usr/share/foo/plugin.xml']  # This is bad!
+```python
+{'foo': ['/home/user/workspace/install/share/foo/plugin.xml', '/usr/share/foo/plugin.xml']}  # This is OK
 
-Where possible the implementation should give the user the option to get multiple response to a question if multiple locations are available, but when the user is asking for one location, the path ordering should be considered.
+{'foo': ['/usr/share/foo/plugin.xml', '/home/user/workspace/install/share/foo/plugin.xml']}  # This is Bad
+
+['/home/user/workspace/share/foo/plugin.xml']  # This is also OK
+
+['/usr/share/foo/plugin.xml']  # This is bad!
+```
+
+Where possible the implementation should give the user the option to get multiple response to a question if multiple locations are available, but when the user is asking for one answer, then the first matched prefix, according to the prefix path ordering, should be returned.
 Note that when returning the multiple results, that they should be organized by package so that it is clear that they are overlaying each other.
 Also note that when returning multiple results the prefix based ordering should be preserved.
 Other data structures are possible, but in any case make sure that overlaid results are not presented as peers and that prefix based ordering is preserved in all cases.
 
-Resource Types
-^^^^^^^^^^^^^^
+### Resource Types
 
 Resource types are represented as folders in the resource index and should be shallow, i.e. there should only be marker files within the resource type folders.
 This means that there is no nesting of resource types, which keeps the file system flat, and makes answering "What resource types are in this `<prefix>`?" as easy as simply listing the directories in the resource index folder.
@@ -127,12 +134,11 @@ Resource type names should be agreed on a priori by the packages utilizing them.
 
 The `packages` resource type is reserved and every software package should place a marker file in the `packages` resource type folder.
 Additionally, anything with a marker file in the `packages` resource type should have any corresponding FHS compliant folders and files located relatively to that marker file within this prefix.
-For example if `<prefix>/share/package_resources/packages/foo` exists then architecture independent files, like a CMake config file or a `package.xml`, should be located relatively from that file in the package's `share` folder, i.e. `../../foo/share`.
+For example if `<prefix>/share/package_resources/packages/foo` exists then architecture independent files, like a CMake config file or a `package.xml`, should be located relatively from that file in the package's `share` folder, i.e. `../../foo`.
 
 Spaces in the resource type names are allowed, but underscores should be preferred, either way be consistent.
 
-Marker Files
-^^^^^^^^^^^^
+### Marker Files
 
 The contents of these files will remain unspecified, but may be used by other systems which utilize this convention to make them more efficient.
 
@@ -143,44 +149,45 @@ This is a good model to follow, feel free to optimize by placing domain specific
 
 Implementations should consider that spaces are allowed in marker file names, but it would be a good idea to follow the package naming guidelines for catkin packages: http://www.ros.org/reps/rep-0127.html#name
 
-Integration with Other Systems
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+### Integration with Other Systems
 
 You should strive to avoid having other systems depend on this system.
 By that I mean that rather than describing your plugins in the marker file you place in the resource index, have the existence of that marker file imply the existence of another file in the share folder for your package.
 To make that concrete you could do this:
 
 ```
-<prefix>/share/
--- foo/
-   ...  # Other, non-plugin related, stuff
--- package_resources/
-   -- packages/
-      -- foo
-      ...
-   -- plugins.rviz/
-      -- foo  # Contains XML describing the rviz plugin
-   -- plugins.rqt/
-      -- foo  # Contains XML describing the rqt plugin
+<prefix>
+    `-- share
+        |-- foo
+        |   `-- ...  # Other, non-plugin related, stuff
+        |-- package_resources
+            |-- packages
+            |   `-- foo
+            |   `-- ...
+            |-- plugins.rviz
+            |   `-- foo  # Contains XML describing the rviz plugin
+            |-- plugins.rqt
+                `-- foo  # Contains XML describing the rqt plugin
 ```
 
 But in that case if I just look at the share folder for `foo` and don't have knowledge of this system, then I don't see that you have any plugins.
 Instead you should do it like this:
 
 ```
-<prefix>/share/
--- foo/
-   ...  # Other, non-plugin related, stuff
-   rviz_plugins.xml
-   rqt_plugins.xml
--- package_resources/
-   -- packages/
-      -- foo
-      ...
-   -- plugins.rviz/
-      -- foo  # Contains nothing, or the relative path `../../foo/rviz_plugins.xml`
-   -- plugins.rqt/
-      -- foo  # Contains nothing, or the relative path `../../foo/rqt_plugins.xml`
+<prefix>
+    `-- share
+        |-- foo
+        |   `-- ...  # Other, non-plugin related, stuff
+        |   `-- rviz_plugins.xml
+        |   `-- rqt_plugins.xml
+        |-- package_resources
+            |-- packages
+            |   `-- foo
+            |   `-- ...
+            |-- plugins.rviz
+            |   `-- foo  # Contains nothing, or the relative path `../../foo/rviz_plugins.xml`
+            |-- plugins.rqt
+                `-- foo  # Contains nothing, or the relative path `../../foo/rqt_plugins.xml`
 ```
 
 That way your package has all it's required information in its `share` folder and the files in `share/package_resources` are simply used as an optimization.
@@ -194,10 +201,9 @@ The Design description above should be sufficient for anyone to implement a vers
 Hopefully by clearly describing the layout of the above system, creating tools to facilitate creation of these files in different build systems should be simple.
 Additionally, the simple file system based layout should make it relatively easy to interact with and query the resource index from any programming language.
 
-Registering with the Resource Index
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+### Registering with the Resource Index
 
-Registering that your package installs a resource a particular type should follow these steps:
+Registering that your package installs a resource of a particular type should follow these steps:
 
 - Does the `<prefix>/share` folder exist?
  - No: Create it.
@@ -220,8 +226,7 @@ register_package(${PROJECT_NAME})
 register_package_resource(${PROJECT_NAME} "plugin.rviz.display" CONTENT "../../${PROJECT_NAME}/plugin.xml")
 ```
 
-Querying the Resource Index
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+### Querying the Resource Index
 
 Querying the resource index should be relatively simple, only requiring the listing of directories to answer all queries.
 Optionally, the marker files can have information in the content, but at most an implementation of this would only need to return the content of this file and at least just return the path to the file.
@@ -316,8 +321,7 @@ def get_all_prefixes_for_package(package_name, prefixes):
 
 These functions should have some error state (raise or throw or return None/NULL) if the package is not found in any of the prefixes.
 
-Locating Resources
-^^^^^^^^^^^^^^^^^^
+### Locating Resources
 
 This project does not aim to index all resources for every package, but simply index meta information about what kinds of resources packages have, in order to narrow down searches and prevent recursive crawling.
 So, if you wanted to locate a particular file, lets say a particular launch for a given package, then you would need to know where that file is installed to, with respect to the install prefix.
@@ -331,7 +335,7 @@ Let's take another example, you are looking for the location of a shared library
 ```python
 # First you can narrow down which packages might have the plugin
 packages = list_prefix_of_packages_by_resource('plugin.rviz.display', list_of_prefixes)
-# Now you can search for the plugin this considerably shorter list of packages
+# Now you can search for the plugin in this considerably shorter list of packages
 for package_name, prefix in packages.items():
     package_xml_path = os.path.join(prefix, 'share', package_name, 'package.xml')
     # Use something to parse the package.xml
