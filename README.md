@@ -1,5 +1,5 @@
-package_resources
-=================
+package_resource_indexer
+========================
 
 System for cataloging and referencing resources distributed by software packages.
 
@@ -44,7 +44,7 @@ This design has the added benefit of being easy to make use of at run time using
 
 ### File System Index Layout
 
-The general concept is that we define a well known location, `<prefix>/share/package_resources`, which is reserved and in which all packages can install files.
+The general concept is that we define a well known location, `<prefix>/share/resource_index`, which is reserved and in which all packages can install files.
 We'll call this the "resource index".
 In this "resource index" is a file system structure which is setup as a set of folders, each of which represent a "resource type".
 In each of those "resource type" folders every package which provides a resource of that type can install a file named for the package, called a "marker file".
@@ -55,7 +55,7 @@ The simplest case is that each package (`foo`, `bar`, and `baz`) should register
 ```
 <prefix>
     `-- share
-        `-- package_resources
+        `-- resource_index
             `-- packages
                 `-- foo
                 `-- bar
@@ -66,7 +66,7 @@ So now the operations to answer "Which packages are installed?" is just (Python)
 
 ```python
 import os
-return os.listdir(os.path.join(prefix, 'share', 'package_resources', 'packages'))
+return os.listdir(os.path.join(prefix, 'share', 'resource_index', 'packages'))
 ```
 
 This can be used to catalog other types of resources with varying degrees of precision.
@@ -76,7 +76,7 @@ For example, we could keep track of which packages have plugins for `rviz`'s dis
 ```
 <prefix>
     `-- share
-        `-- package_resources
+        `-- resource_index
             |-- packages
             |   `-- foo
             |   `-- bar
@@ -89,7 +89,7 @@ Answering the question "Which packages have plugins for rviz's display system?" 
 
 ```python
 import os
-return os.listdir(os.path.join(prefix, 'share', 'package_resources', 'plugins.rviz.display'))
+return os.listdir(os.path.join(prefix, 'share', 'resource_index', 'plugins.rviz.display'))
 ```
 
 Currently in ROS, this requires that all packages are discovered first and then each manifest file for each package must be parsed (`package.xml` or `manifest.xml`) and then for each package zero to many `plugin.xml` files must be parsed.
@@ -101,7 +101,7 @@ These types of queries can potentially speed up command line tools considerably.
 
 ### Resource Index
 
-Each prefix which contains any packages should contain a resource index folder located at `<prefix>/share/package_resources`.
+Each prefix which contains any packages should contain a resource index folder located at `<prefix>/share/resource_index`.
 In this context a "prefix" is a FHS compliant file system and typically will be listed in an environment variable as a list of paths, e.g. `ROS_PACKAGE_PATH` or `CMAKE_PREFIX_PATH`, and will contain the system and user "install spaces", e.g. `/usr`, `/usr/local`, `/opt/ros/indigo`, `/home/user/workspace/install`, etc...
 
 Any implementation which allows queries should consider multiple prefixes.
@@ -134,7 +134,7 @@ Resource type names should be agreed on a priori by the packages utilizing them.
 
 The `packages` resource type is reserved and every software package should place a marker file in the `packages` resource type folder.
 Additionally, anything with a marker file in the `packages` resource type should have any corresponding FHS compliant folders and files located relatively to that marker file within this prefix.
-For example if `<prefix>/share/package_resources/packages/foo` exists then architecture independent files, like a CMake config file or a `package.xml`, should be located relatively from that file in the package's `share` folder, i.e. `../../foo`.
+For example if `<prefix>/share/resource_index/packages/foo` exists then architecture independent files, like a CMake config file or a `package.xml`, should be located relatively from that file in the package's `share` folder, i.e. `../../foo`.
 
 Spaces in the resource type names are allowed, but underscores should be preferred, either way be consistent.
 
@@ -160,7 +160,7 @@ To make that concrete you could do this:
     `-- share
         |-- foo
         |   `-- ...  # Other, non-plugin related, stuff
-        |-- package_resources
+        |-- resource_index
             |-- packages
             |   `-- foo
             |   `-- ...
@@ -180,7 +180,7 @@ Instead you should do it like this:
         |   `-- ...  # Other, non-plugin related, stuff
         |   `-- rviz_plugins.xml
         |   `-- rqt_plugins.xml
-        |-- package_resources
+        |-- resource_index
             |-- packages
             |   `-- foo
             |   `-- ...
@@ -190,7 +190,7 @@ Instead you should do it like this:
                 `-- foo  # Contains nothing, or the relative path `../../foo/rqt_plugins.xml`
 ```
 
-That way your package has all it's required information in its `share` folder and the files in `share/package_resources` are simply used as an optimization.
+That way your package has all it's required information in its `share` folder and the files in `share/resource_index` are simply used as an optimization.
 
 While there are no restrictions about content or format of the marker files, you should try to keep them simple.
 
@@ -205,9 +205,9 @@ Additionally, the simple file system based layout should make it relatively easy
 
 Registering that your package installs a resource of a particular type should follow these steps:
 
-- Do the `<prefix>/share/package_resources/<resource_type>` folders exist?
+- Do the `<prefix>/share/resource_index/<resource_type>` folders exist?
  - No: Create them.
-- Does the `<prefix>/share/package_resources/<resource_type>/<package_name>` file exist?
+- Does the `<prefix>/share/resource_index/<resource_type>/<package_name>` file exist?
  - Yes: At best, error registration collision, otherwise overwrite (bad behavior, but it may not be possible to detect)
  - No: Create it, with any content you want (keep it simple)
 
@@ -323,7 +323,7 @@ These functions should have some error state (raise or throw or return None/NULL
 
 This project does not aim to index all resources for every package, but simply index meta information about what kinds of resources packages have, in order to narrow down searches and prevent recursive crawling.
 So, if you wanted to locate a particular file, lets say a particular launch for a given package, then you would need to know where that file is installed to, with respect to the install prefix.
-In this case, this package resource project is only useful in finding which prefix to find it in.
+In this case, this project is only useful in finding which prefix to find it in.
 So first, you would find which prefix the given package is in by calling the `get_prefix_for_package` function and from there you can append the FHS defined folders like `bin`, `lib`, `share/<package name>`, etc...
 Lets say you know that the launch file is in the `share/<package name>` folder because it is not architecture specific and further more that it is in the `launch` folder in the `share/<package name>` folder and finally that the name of the launch file is `demo.launch`.
 From that information, and the prefix you got from `get_prefix_for_package`, you can construct the path to the launch file.
