@@ -1,0 +1,5 @@
+#cmakedefine TEST_DEFINE
+
+${TEST_CURLY_BRACES}
+
+@TEST_AT_SYMBOL@
