@@ -52,5 +52,5 @@ function(register_package_resource package_name resource_name)
   endif()
 
   # Install the file
-  install(FILES "${_marker_file_build_space_path}" DESTINATION "${_marker_file_path}")
+  install(FILES "${_marker_file_build_space_path}" DESTINATION "${_resource_dir_path}")
 endfunction()
