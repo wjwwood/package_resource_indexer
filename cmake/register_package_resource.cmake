@@ -45,7 +45,7 @@ function(register_package_resource package_name resource_name)
       message(FATAL_ERROR "register_package_resource() given CONTENT_FILE which does not exist: ${ARG_CONTENT_FILE}")
     endif()
 
-    configure_file("${ARG_CONTENT_FILE}" "${_marker_file_build_space_path" @ONLY)
+    configure_file("${ARG_CONTENT_FILE}" "${_marker_file_build_space_path}" @ONLY)
   else()
     # Use the CONTENT arg to create the marker file
     file(WRITE "${_marker_file_build_space_path}" "${ARG_CONTENT}")
