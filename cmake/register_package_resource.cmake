@@ -17,7 +17,7 @@ include(CMakeParseArguments)
 # :type CONTENT_FILE: string
 #
 function(register_package_resource package_name resource_name)
-  cmake_parse_arguments(ARG "ALLOW_REPEAT_REGISTRATIONS" "CONTENT CONTENT_FILE" "" ${ARGN})
+  cmake_parse_arguments(ARG "" "CONTENT;CONTENT_FILE" "" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "register_package_resource() called with unused arguments: ${ARG_UNPARSED_ARGUMENTS}")
   endif()
