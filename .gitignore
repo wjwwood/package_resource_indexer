@@ -22,3 +22,6 @@
 *.x86_64
 *.hex
 build
+
+# Test files
+*.pyc
