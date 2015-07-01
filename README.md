@@ -12,7 +12,7 @@ This project does not aim to catalog and explicitly reference all individual res
 These are the design requirements:
 
 - Prevent recursive crawling
- - Resources should be cataloged in away in which no recursive crawling of directories is required
+ - Resources should be cataloged in a way in which no recursive crawling of directories is required
 - Autonomous Participation
  - Packages which register resources should be able to do so without invoking some other package (like this one)
 - Avoid installed file collisions
